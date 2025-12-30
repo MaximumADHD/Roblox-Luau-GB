@@ -1,14 +1,14 @@
 local StudioService = game:GetService("StudioService")
+local AssetService = game:GetService("AssetService")
 local RunService = game:GetService("RunService")
 local Gameboy = require(script.Parent.Gameboy)
 
 local enabled = pcall(function()
-	local test = Instance.new("EditableImage")
-	test:WritePixels(Vector2.zero, Vector2.one, { 1, 1, 1, 1 })
+	AssetService:CreateEditableImage()
 end)
 
 if not enabled then
-	warn("EditableImage Beta is not enabled! Go to 'File > Beta Features' and check 'EditableImage and EditableMesh' to use the Gameboy Emulator!")
+	warn("EditableImage is not enabled! Go to 'Game Settings > Security' and check 'Allow Mesh / Image APIs' to use the Gameboy Emulator!")
 	return
 end
 
@@ -41,15 +41,15 @@ local aspectRatio = Instance.new("UIAspectRatioConstraint")
 aspectRatio.AspectRatio = WIDTH / HEIGHT
 aspectRatio.Parent = window
 
-local screen = Instance.new("EditableImage")
-screen.Size = size
-screen.Name = "Screen"
-screen.Parent = window
+local screen = AssetService:CreateEditableImage({ Size = size })
+window.ImageContent = Content.fromObject(screen)
 
 local ticker = 0
 local runner: thread?
 local lastTick = os.clock()
-local frameBuffer = table.create(WIDTH * HEIGHT * 4, 1)
+
+local frameBuffer = buffer.create(WIDTH * HEIGHT * 4)
+buffer.fill(frameBuffer, 0, 255)
 
 local inputMap = {
 	[Enum.KeyCode.Up] = "Up",
@@ -99,18 +99,6 @@ local function runThread()
 	local self = assert(runner)
 	assert(self == coroutine.running())
 
-	local hackRender = Instance.new("Part")
-	hackRender.CFrame = workspace.CurrentCamera.CFrame
-	hackRender.Parent = workspace
-
-	local hackDecal = Instance.new("Decal")
-	hackDecal.Parent = hackRender
-	screen.Parent = hackRender
-
-	task.wait()
-	screen.Parent = window
-	hackRender:Destroy()
-
 	while true do
 		local now = os.clock()
 		local dt = now - lastTick
@@ -139,15 +127,16 @@ local function runThread()
 		for y = 0, HEIGHT - 1 do
 			for x = 0, WIDTH - 1 do
 				local pixel = pixels[y][x]
-				frameBuffer[i + 1] = pixel[1] / 255
-				frameBuffer[i + 2] = pixel[2] / 255
-				frameBuffer[i + 3] = pixel[3] / 255
-
+				buffer.writeu8(frameBuffer, i, pixel[1])
+				buffer.writeu8(frameBuffer, i + 1, pixel[2])
+				buffer.writeu8(frameBuffer, i + 2, pixel[3])
+				buffer.writeu8(frameBuffer, i + 3, 255)
+				
 				i += 4
 			end
 		end
-
-		screen:WritePixels(Vector2.zero, size, frameBuffer)
+		
+		screen:WritePixelsBuffer(Vector2.zero, size, frameBuffer)
 		RunService.Heartbeat:Wait()
 	end
 end
@@ -160,7 +149,7 @@ local function onEjectCartridge()
 
 	gb.cartridge.reset()
 	ejectCartridge:SetActive(false)
-	screen:DrawRectangle(Vector2.zero, size, Color3.new(), 0)
+	screen:DrawRectangle(Vector2.zero, size, Color3.new(), 0, Enum.ImageCombineType.Overwrite)
 end
 
 local function onEnabledChanged()
